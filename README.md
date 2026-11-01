@@ -301,8 +301,27 @@ It then launches full screen with its own icon, no Safari chrome, and the
 session persists so it rarely asks you to sign in again. Sign out lives in the
 More sheet.
 
-A deliberate limitation: there is no service worker yet, so the app needs a
-connection to open. See **What is left**.
+It works offline to the extent that is safe: see **Offline** below.
+
+### Offline
+
+A service worker caches the app shell, so it opens off disk rather than
+re-downloading ~103kB of JS on a slow connection, and shows a real screen
+instead of a white page when there is no signal.
+
+It deliberately does **not** cache your numbers. `/training` is server-rendered
+with sleep, HRV and body composition inside the HTML, and `next.config.mjs`
+already sends `Cache-Control: private, no-store` for it. Writing that same HTML
+into Cache Storage would put health data on disk in exactly the place that
+header exists to prevent, and would undo it silently. API routes, auth routes
+and every Supabase request are left alone for the same reason.
+
+So the trade is explicit: offline you get the app and an honest "no
+connection" screen, not yesterday's readiness. A smoke check asserts that
+nothing matching `/training`, `/preview`, `/api` or `/auth` ever lands in a
+cache.
+
+The worker itself is served `no-cache`. A cached service worker never updates.
 
 ## Before the first Garmin run
 
@@ -325,7 +344,7 @@ pull), and what the backfill limits are.
 python -m pytest
 ```
 
-169 Python tests, plus a 16-case visual smoke test described under
+169 Python tests, plus a 21-case browser smoke test described under
 **The page**. The ones worth knowing about:
 
 - **The hand calculation** (`test_load.py`). The acceptance check asks that
@@ -422,8 +441,10 @@ cd web && BASE_URL=http://localhost:3100 npm run smoke
 ```
 
 Drives all eight tabs in both colour schemes and fails on a console error, a
-horizontal overflow, or a tab that renders nothing. It runs in CI, and it
-earned its place by catching two real bugs:
+horizontal overflow, or a tab that renders nothing. It then registers the
+service worker, goes offline, and asserts that the offline page is served and
+styled and that no page or API response has been written to Cache Storage.
+It runs in CI, and it earned its place by catching two real bugs:
 
 - a React hydration mismatch, because `Math.cos` differs in its last bit
   between Node and V8 and the gauge wrote raw floats into SVG attributes
@@ -485,15 +506,14 @@ per-day regardless of training.
 
 ### Worth building next
 
-8. **A service worker.** Right now the app needs a connection to open. Caching
-   the shell and the static assets, network-first for data, would make it open
-   instantly and not white-screen without signal. Worth doing before anything
-   else on this list: it is the difference between a website on your home
-   screen and something that behaves like an app. Health data should not be
-   cached offline, so the shell caches and the numbers do not.
-9. **Push notifications** for the Sunday verdict, rather than ntfy. iOS
-   supports web push for installed PWAs from 16.4. This is the only reason to
-   consider Expo, and it is no longer much of one.
+8. **Push notifications** for the Sunday verdict, rather than ntfy. iOS
+   supports web push for installed PWAs from 16.4, and the service worker that
+   would receive them now exists. This is the only reason to consider Expo,
+   and it is no longer much of one.
+9. **Offline check-in queueing.** The one thing genuinely worth storing on the
+   phone is an unsent check-in: it is four small integers, none of them a
+   measurement, and losing it to a dead signal is annoying. Background Sync
+   would flush it when the connection returns.
 
 ### From Phase 5, not built
 

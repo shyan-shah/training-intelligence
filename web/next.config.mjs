@@ -7,6 +7,16 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // A cached service worker never updates. The browser revalidates
+        // sw.js on every navigation, so this must not be cacheable.
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+        ],
+      },
+      {
         source: "/training/:path*",
         headers: [
           { key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" },

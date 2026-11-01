@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 
 import "./globals.css";
 import { ThemeScript } from "./theme-script";
+import { ServiceWorker } from "@/components/ServiceWorker";
 
 export const metadata: Metadata = {
   title: "Training",
@@ -43,7 +44,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             open the installed app full screen instead of in a Safari chrome. */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorker />
+      </body>
     </html>
   );
 }

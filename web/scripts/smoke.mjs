@@ -32,6 +32,14 @@ const browser = await chromium.launch({
 });
 let failures = 0;
 
+function report(group, name, ok, detail = "") {
+  if (!ok) failures += 1;
+  console.log(
+    `${ok ? "PASS" : "FAIL"} ${group.padEnd(5)} ${name.padEnd(30)}` +
+    (detail ? ` ${detail}` : ""),
+  );
+}
+
 for (const colorScheme of SCHEMES) {
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -81,6 +89,64 @@ for (const colorScheme of SCHEMES) {
   await ctx.close();
 }
 
+/* ---------------------------------------------------------------------
+ * Service worker: the app must open offline with a real screen, and must
+ * NOT have written any health data to Cache Storage while doing it.
+ * ------------------------------------------------------------------- */
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await ctx.newPage();
+
+  // /login is public, so this works without a Supabase session.
+  await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle" });
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload({ waitUntil: "networkidle" });
+
+  const controlled = await page.evaluate(() => Boolean(navigator.serviceWorker.controller));
+  report("sw", "controls the page", controlled);
+
+  const precached = await page.evaluate(async () => {
+    const names = await caches.keys();
+    for (const n of names) {
+      const c = await caches.open(n);
+      if (await c.match("/offline")) return true;
+    }
+    return false;
+  });
+  report("sw", "offline page precached", precached);
+
+  await ctx.setOffline(true);
+  const resp = await page.goto(`${BASE_URL}/training`, { waitUntil: "domcontentloaded" });
+  const text = await page.locator("body").innerText();
+  report("sw", "serves offline page", resp !== null && text.includes("No connection"));
+
+  // Styling must survive, which is the whole point of caching the shell.
+  const styled = await page.evaluate(
+    () => getComputedStyle(document.body).backgroundColor !== "rgba(0, 0, 0, 0)",
+  );
+  report("sw", "offline page is styled", styled);
+
+  await ctx.setOffline(false);
+
+  // Nothing rendered may be in Cache Storage: /training HTML carries health
+  // data, and next.config sends no-store for it.
+  const leaked = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const hits = [];
+    for (const n of names) {
+      const c = await caches.open(n);
+      for (const req of await c.keys()) {
+        const u = new URL(req.url);
+        if (/^\/(training|preview|api|auth)/.test(u.pathname)) hits.push(u.pathname);
+      }
+    }
+    return hits;
+  });
+  report("sw", "no page or API responses cached", leaked.length === 0, leaked.join(", "));
+
+  await ctx.close();
+}
+
 await browser.close();
-console.log(failures === 0 ? "\nAll tabs clean." : `\n${failures} check(s) failed.`);
+console.log(failures === 0 ? "\nAll checks clean." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);
