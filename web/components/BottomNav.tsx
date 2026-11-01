@@ -153,7 +153,7 @@ function MoreSheet({
           </button>
         </div>
 
-        <ul className="grid grid-cols-2 gap-2">
+        <ul className="grid grid-cols-2 gap-2 mb-3">
           {MORE_TABS.map((t) => {
             const Icon = TAB_ICONS[t];
             const active = tab === t;
@@ -176,6 +176,16 @@ function MoreSheet({
             );
           })}
         </ul>
+
+        <form action="/auth/signout" method="post">
+          <button
+            type="submit"
+            className="press w-full rounded-xl p-3 text-center text-xs font-medium"
+            style={{ background: "var(--surface-sunken)", color: "var(--text-secondary)" }}
+          >
+            Sign out
+          </button>
+        </form>
       </div>
     </div>
   );

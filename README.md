@@ -250,6 +250,60 @@ register(mcp)
 
 ---
 
+## Getting it on your phone
+
+The app is a PWA, so there is no App Store step and no TestFlight. Deploy it,
+sign in once in Safari, add it to the home screen.
+
+### 1. Supabase
+
+Run the two migrations and the seed, then turn on email sign-in.
+
+In the Supabase dashboard, under Authentication:
+
+- **Providers → Email**: enabled, with "Confirm email" on. Magic links need it.
+- **URL Configuration → Site URL**: the deployed origin.
+- **Redirect URLs**: add `https://<your-domain>/auth/confirm`. The link in the
+  email will not work without it.
+
+Create exactly one user, with your own email. Sign-in uses
+`shouldCreateUser: false`, so nobody else can make an account by submitting
+their address at `/login`. RLS is the second line of defence, not the only one.
+
+### 2. Vercel
+
+Point a Vercel project at this repo with `web` as the root directory. Two
+environment variables:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://drdvfdwxjgbqpnnqfzgg.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+```
+
+The anon key is meant to be public. The service key must never appear here: it
+bypasses RLS and belongs only in GitHub Actions.
+
+### 3. GitHub Actions
+
+Add every secret from `.env.example` to the repository's Actions secrets. The
+ingest workflow runs four times a day, the compute nightly, the report on
+Sunday. Until the secrets exist, the workflows fail and the page stays empty.
+
+### 4. Install it
+
+On the iPhone, in **Safari** (not Chrome, which cannot install to the home
+screen on iOS):
+
+1. Open the deployed URL and sign in. The magic link opens back in Safari.
+2. Share → Add to Home Screen.
+
+It then launches full screen with its own icon, no Safari chrome, and the
+session persists so it rarely asks you to sign in again. Sign out lives in the
+More sheet.
+
+A deliberate limitation: there is no service worker yet, so the app needs a
+connection to open. See **What is left**.
+
 ## Before the first Garmin run
 
 `ingest/garmin_personal.py` carries endpoint paths and field names that are
@@ -400,15 +454,60 @@ per-day regardless of training.
 
 ---
 
-## Not built
+## What is left
 
-Out of scope in the brief and not attempted: pushing workouts to Garmin (the
-Personal API is read-only), multi-user, a native iOS app.
+### Blocking a working app
 
-From Phase 5, built: race targets table and seeds, the daily check-in, gear
-mileage with per-model replacement thresholds, and nutrition against targets.
-Not built: the race build-phase model with its target CTL ramp plotted against
-actual, the strength top-set progression tracker, the IT band injury watch, the
-uni deadline overlay on the Load chart, and the scan discipline reminder. The
-schema supports all of them; `races`, `nutrition_daily` and
-`daily_checkin.niggle_pain` are already in place.
+1. **Secrets and the database.** Nothing runs until the migrations are applied
+   and the Actions secrets are set. This is the only item between here and a
+   working page.
+2. **Verify the Garmin Personal API endpoints.** `ingest/garmin_personal.py`
+   carries unverified paths and field names; the swagger is behind the
+   developer portal. Check them when the key is issued and correct the one
+   `ENDPOINTS` block. The swagger also decides whether the Personal tier offers
+   pull endpoints at all, or whether this needs a webhook receiver instead of a
+   scheduled pull.
+3. **Set LTHR and CSS**, or accept that HR-fallback TSS and swim TSS stay off.
+   A threshold test and a 400/200 CSS test are the inputs.
+4. **Settle the Garmin terms question** before relying on the chat tools. Read
+   the Personal tier terms at sign up.
+
+### Needed before the numbers mean anything
+
+5. **Resume Evolt scanning.** One scan is on record. Gain quality needs two,
+   the rolling average needs three. The Body tab stays mostly empty until then,
+   and that is the code being honest rather than broken.
+6. **Run it for 14 days** to clear the "every source landing daily" acceptance
+   check, and to give the insight engine its minimum of 14 paired days.
+7. **Parse one real Evolt PDF end to end** and compare against the printout.
+   The text-layer path is tested against the real scan's values, but not yet
+   against the actual file.
+
+### Worth building next
+
+8. **A service worker.** Right now the app needs a connection to open. Caching
+   the shell and the static assets, network-first for data, would make it open
+   instantly and not white-screen without signal. Worth doing before anything
+   else on this list: it is the difference between a website on your home
+   screen and something that behaves like an app. Health data should not be
+   cached offline, so the shell caches and the numbers do not.
+9. **Push notifications** for the Sunday verdict, rather than ntfy. iOS
+   supports web push for installed PWAs from 16.4. This is the only reason to
+   consider Expo, and it is no longer much of one.
+
+### From Phase 5, not built
+
+The race build-phase model with its target CTL ramp plotted against actual, the
+strength top-set progression tracker, the IT band injury watch, the uni
+deadline overlay on the Load chart, and the scan discipline reminder.
+
+The schema already supports all of them: `races`, `nutrition_daily` and
+`daily_checkin.niggle_pain` are in place and seeded.
+
+Built from Phase 5: race targets, the daily check-in, gear mileage with
+per-model replacement thresholds, and nutrition against targets.
+
+### Out of scope, per the brief
+
+Pushing workouts to Garmin (the Personal API is read-only), multi-user, and a
+native iOS app.
