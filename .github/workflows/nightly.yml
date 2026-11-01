@@ -1,0 +1,36 @@
+name: Nightly compute
+
+# 02:12 Europe/London. Runs after the 23:17 ingest so it computes on a full day.
+# Cron in Actions is UTC, which means this drifts by an hour across BST. That is
+# acceptable here: nothing downstream depends on the exact minute.
+on:
+  schedule:
+    - cron: "12 2 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days of history to recompute"
+        default: "180"
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  compute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Compute load, readiness, scorecard and insights
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+        run: python -m engine.ti.nightly --days "${{ inputs.days || 180 }}"

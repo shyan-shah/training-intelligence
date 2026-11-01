@@ -1,0 +1,70 @@
+name: Ingest
+
+# Four times a day. Garmin and Strava both backfill, so a missed run is caught
+# by the next one rather than leaving a hole.
+on:
+  schedule:
+    - cron: "17 5,11,17,23 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days of history to pull"
+        default: "7"
+        required: false
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Garmin, official Personal API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+          GARMIN_PERSONAL_TOKEN: ${{ secrets.GARMIN_PERSONAL_TOKEN }}
+        run: python -m ingest.run garmin-personal --days "${{ inputs.days || 7 }}"
+
+      # The login route fills the five fields the Personal tier does not
+      # expose. Its token dies roughly monthly, so a failure here must not fail
+      # the workflow: only those columns go null.
+      - name: Garmin, login route top-up
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: python -m ingest.run garmin-login --days "${{ inputs.days || 7 }}"
+
+      - name: Strava
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
+        run: python -m ingest.run strava --days "${{ inputs.days || 7 }}"
+
+      - name: Evolt, parse anything uploaded but not yet read
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m ingest.run evolt

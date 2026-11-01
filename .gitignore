@@ -1,0 +1,30 @@
+# Secrets. Never committed, in any form.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next
+node_modules/
+web/.next/
+web/out/
+web/.vercel/
+.DS_Store
+
+# Local scratch
+*.log
+tmp/
+scratch/
+
+# TypeScript incremental build cache
+*.tsbuildinfo

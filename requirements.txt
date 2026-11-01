@@ -1,0 +1,11 @@
+# Runtime. Kept deliberately small: the analytics engine is pure stdlib, so
+# nothing here is needed to compute a number.
+httpx==0.27.2
+pdfplumber==0.11.4
+
+# Garmin login route. Optional: if it is missing or fails, only the five
+# top-up columns go null. See ingest/garmin_login.py.
+garminconnect==0.2.25
+
+# Evolt vision fallback only, used when a PDF has no text layer.
+anthropic==0.39.0

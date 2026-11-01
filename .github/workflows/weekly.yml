@@ -1,0 +1,31 @@
+name: Weekly report
+
+# Sunday 18:31 Europe/London. Actions cron is UTC, so this fires at 18:31 local
+# during GMT and 19:31 local during BST. Set to 17:31 UTC if the local time
+# matters more than the consistency.
+on:
+  schedule:
+    - cron: "31 18 * * 0"
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Write the weekly report and push the verdict
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          # Stays 0. Health numbers must never reach the public ntfy relay.
+          NTFY_INCLUDE_SENSITIVE: "0"
+        run: python -m engine.ti.weekly
