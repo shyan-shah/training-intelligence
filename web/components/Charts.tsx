@@ -40,11 +40,12 @@ function TooltipBox({ active, payload, label, series }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div
-      className="rounded-md border px-3 py-2 text-xs shadow-lg"
+      className="rounded-xl border px-3 py-2 text-xs"
       style={{
         background: CHROME.surface,
         borderColor: "var(--border-hairline)",
         color: CHROME.ink,
+        boxShadow: "var(--shadow-lg)",
       }}
     >
       <div className="mb-1 font-medium">{label ? shortDate(String(label)) : ""}</div>
@@ -95,24 +96,23 @@ function ChartFrame({
   const [showTable, setShowTable] = useState(false);
 
   return (
-    <section
-      className="rounded-xl border p-4"
-      style={{ background: CHROME.surface, borderColor: "var(--border-hairline)" }}
-    >
+    <section className="panel p-4">
       <header className="mb-1 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
+          <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
           {subtitle && (
-            <p className="mt-0.5 text-xs" style={{ color: CHROME.inkSecondary }}>
+            <p className="mt-0.5 text-xs leading-relaxed" style={{ color: CHROME.inkSecondary }}>
               {subtitle}
             </p>
           )}
         </div>
+        {/* The table view is also the contrast relief for the light-mode
+            aqua and yellow series, so it is on every chart, not optional. */}
         <button
           type="button"
           onClick={() => setShowTable((v) => !v)}
-          className="shrink-0 rounded-md border px-2 py-1 text-[11px]"
-          style={{ borderColor: "var(--border-hairline)", color: CHROME.inkSecondary }}
+          className="press shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium"
+          style={{ background: "var(--surface-sunken)", color: CHROME.inkSecondary }}
           aria-pressed={showTable}
         >
           {showTable ? "Chart" : "Table"}
@@ -120,7 +120,7 @@ function ChartFrame({
       </header>
 
       {series.length > 1 && (
-        <ul className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        <ul className="mb-2.5 mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[11px]">
           {series.map((s) => (
             <li key={s.key} className="flex items-center gap-1.5">
               <span
@@ -143,7 +143,7 @@ function ChartFrame({
       )}
 
       {note && (
-        <p className="mt-2 text-[11px]" style={{ color: CHROME.muted }}>
+        <p className="mt-2.5 text-[11px] leading-relaxed" style={{ color: CHROME.muted }}>
           {note}
         </p>
       )}
@@ -154,7 +154,7 @@ function ChartFrame({
 function EmptyChart() {
   return (
     <div
-      className="flex h-56 items-center justify-center rounded-lg border border-dashed text-xs sm:h-64"
+      className="flex h-56 items-center justify-center rounded-xl border border-dashed text-xs sm:h-64"
       style={{ borderColor: "var(--border-hairline)", color: CHROME.muted }}
     >
       No data in this range yet

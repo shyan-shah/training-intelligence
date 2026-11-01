@@ -113,13 +113,14 @@ neither power nor pace scores nothing rather than a fabricated number. Because
 `css_swim` is unset, swim TSS is disabled too (with 2 swims in 90 days this
 costs almost nothing today). Set both and they switch on with no code change.
 
-### 7. Conflicts to resolve
+### 7. Target conflicts, and how they were settled
 
-- **Protein target.** The Evolt scan prescribes 216-223g/day. The Vault's
-  nutrition memory says 150-170g/day, vegetarian. The streak calendar needs one
-  number; it is seeded at **216** from the scan. Pick one and edit
-  `athlete_settings.targets.protein_g`. Worth noting 216g vegetarian is a hard
-  daily ask, and this is the habit most likely to run red.
+- **Protein target: settled at 216g.** The Evolt scan prescribes 216-223g/day;
+  the Vault's nutrition memory said 150-170g/day. 216 wins, because it is tied
+  to the muscle-gain goal and to the 2874-2974 kcal target seeded next to it.
+  Worth knowing that 216g vegetarian is a hard daily ask, so expect this to be
+  the habit that runs red most often. One value in
+  `athlete_settings.targets.protein_g` if the goal changes.
 - **Weight.** The Strava profile says 62kg; the Evolt scan says 66.7kg. The
   Strava figure is almost certainly stale. Evolt is treated as the source of
   truth for composition and Garmin for daily weight; Strava's profile weight is
@@ -270,7 +271,8 @@ pull), and what the backfill limits are.
 python -m pytest
 ```
 
-169 tests. The ones worth knowing about:
+169 Python tests, plus a 16-case visual smoke test described under
+**The page**. The ones worth knowing about:
 
 - **The hand calculation** (`test_load.py`). The acceptance check asks that
   CTL, ATL and TSB match a hand calculation on three sample days. Rather than
@@ -301,15 +303,28 @@ python -c "from ingest.evolt import parse_pdf; print(parse_pdf('/path/to/scan.pd
 
 ---
 
-## Charts
+## The page
+
+Phone first, and built like a phone app rather than a desktop dashboard that
+shrank: a bottom navigation bar within thumb reach, a readiness gauge as the
+first thing on screen, and the depth behind tabs. Eight tabs will not fit
+across a phone, so the four most-used sit in the bar and the rest live behind
+More. When a More tab is active the fifth slot takes that tab's name, so the
+bar always shows where you are.
+
+Light and dark are both selected sets, not one flipped into the other, and the
+toggle cycles system / light / dark. A small inline script applies the saved
+choice before first paint so there is no flash of the wrong palette.
+
+### Charts
 
 The palette is the validated reference set, not a taste call. The four
 categorical slots clear the colourblindness and contrast gates on the adjacent
-pairlist in both light and dark; the three-series set clears all-pairs. Light
-mode aqua (2.74:1) and yellow (2.11:1) sit below 3:1 on the light surface, so
-every chart carries direct labels and a table-view toggle as the relief.
+pairlist in both modes; the three-series set clears all-pairs. Light mode aqua
+(2.74:1) and yellow (2.11:1) sit below 3:1 on the light surface, so every chart
+carries direct labels and a table-view toggle as the relief.
 
-Three rules that shaped the layout:
+Three rules shaped the layout:
 
 - **No dual axes, anywhere.** The brief asks for "skeletal muscle, fat mass and
   body fat % on one timeline". Kilograms and percent cannot share a y-axis, so
@@ -317,14 +332,54 @@ Three rules that shaped the layout:
 - **Colour follows the entity, not its rank**, so filtering the sport list
   never repaints the survivors.
 - **Status colours are reserved.** Green is a hit, red a miss, grey no data,
-  amber readiness only. None of them doubles as a series colour, and each is
-  paired with a label so colour never carries meaning alone.
+  amber readiness only. None doubles as a series colour, and each is paired
+  with a label or an icon so colour never carries meaning alone.
 
-Recharts is lazy-loaded, which keeps the Today tab's first-load JS at 114kB
-rather than 225kB. That is in service of the "Today loads in under 2 seconds on
-4G" check.
+Recharts is lazy-loaded behind a shimmer placeholder, which keeps the Today
+tab's first-load JS at 120kB rather than 225kB, in service of the "Today loads
+in under 2 seconds on 4G" check.
 
----
+Every animation is suppressed under `prefers-reduced-motion`, including the
+gauge sweep and the count-up.
+
+### Looking at it without a database
+
+`/preview` renders the real page against fixtures, so the design can be worked
+on without Supabase or a signed-in session. It 404s in production unless
+`ENABLE_PREVIEW=1`.
+
+```bash
+cd web && npm run dev
+```
+
+The fixtures deliberately match the audited reality rather than an idealised
+athlete: one Evolt scan, sparse running, a gym habit at about one session a
+week against a target of four. A design that only looks right on dense data is
+the wrong design.
+
+### Visual smoke test
+
+```bash
+cd web && npm run build && ENABLE_PREVIEW=1 npm start -- -p 3100
+```
+
+```bash
+cd web && BASE_URL=http://localhost:3100 npm run smoke
+```
+
+Drives all eight tabs in both colour schemes and fails on a console error, a
+horizontal overflow, or a tab that renders nothing. It runs in CI, and it
+earned its place by catching two real bugs:
+
+- a React hydration mismatch, because `Math.cos` differs in its last bit
+  between Node and V8 and the gauge wrote raw floats into SVG attributes
+  (`14.33436854000503` against `14.334368540005045`). Every coordinate is
+  rounded now;
+- the three-up stat row on the Load tab spilling past a 390px screen once
+  sparklines sat beside the numbers.
+
+If the machine already has a Chromium, point at it with `CHROMIUM_PATH` instead
+of running `playwright install`.
 
 ## Acceptance checks
 
@@ -334,7 +389,7 @@ rather than 225kB. That is in service of the "Today loads in under 2 seconds on
 | 14 consecutive days of every source landing | Not yet. Needs 14 days of live running |
 | CTL/ATL/TSB match a hand calculation on 3 days | Passing, re-derived in exact arithmetic |
 | A real Evolt PDF parses to the printed values | Text-layer path passing against the real scan's values; run once against the actual PDF |
-| Today tab under 2s on iPhone over 4G | 114kB first load. Measure on the device once deployed |
+| Today tab under 2s on iPhone over 4G | 120kB first load, charts lazy-loaded. Measure on the device once deployed |
 | Weekly verdict shows its numbers | Passing. Every rule ships its value and threshold |
 | Killing the login token leaves the page working | By construction. `garmin_login.ingest` never raises; the five columns go null |
 

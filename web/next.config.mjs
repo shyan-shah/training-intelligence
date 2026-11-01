@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // The dev overlay badge sits exactly on top of the bottom navigation.
+  devIndicators: false,
   // Health data: never let a proxy or CDN hold a copy of a rendered page.
   async headers() {
     return [

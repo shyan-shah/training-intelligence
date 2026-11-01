@@ -10,9 +10,11 @@
 --   css_swim       null  NO SOURCE. Needs a 400/200 CSS test. Swim TSS stays
 --                        disabled until then (only 2 swims in 90 days anyway).
 --
--- targets.protein_g is set to the Evolt scan prescription (216g). Note this
--- conflicts with the 150-170g target recorded in the Vault; see README
--- "Conflicts to resolve".
+-- targets.protein_g is 216g, the Evolt scan prescription, chosen over the
+-- 150-170g figure recorded in the Vault. Decided 1 Nov 2026. The scan figure
+-- is tied to the muscle-gain goal and to the 2874-2974 kcal target that sits
+-- beside it here, so the two stay consistent. Change this one value if the
+-- goal changes; the streak calendar and the daily scorecard both read it.
 
 insert into athlete_settings (user_id, ftp_w, threshold_pace, css_swim, lthr, max_hr, zones, targets, thresholds)
 values (

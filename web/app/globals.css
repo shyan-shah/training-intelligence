@@ -2,33 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Palette roles. Values come from the validated reference palette: the four
-   categorical slots pass every hard gate on the adjacent pairlist in both
-   modes, and the three-series set passes all-pairs. Dark is a selected set of
-   steps for the dark surface, not an automatic flip, which is why the values
-   are declared rather than derived.
+/* ===================================================================
+   Palette roles.
+
+   The series and status values are the validated reference set and are
+   NOT design choices to be adjusted: the four categorical slots clear the
+   colourblindness and contrast gates on the adjacent pairlist in both
+   modes, and the three-series set clears all-pairs. Everything else in
+   this file is chrome (surfaces, elevation, motion) and is free to move.
 
    Light-mode aqua (2.74:1) and yellow (2.11:1) sit below 3:1 on the light
-   surface. The relief rule applies wherever they are used: those charts ship
-   visible direct labels and a table view. */
+   surface, so charts using them carry direct labels and a table view.
+   =================================================================== */
 :root {
   color-scheme: light;
 
+  /* Surfaces. surface-2 is a raised plane for cards sitting on cards. */
+  --plane: #f4f4f1;
   --surface-1: #fcfcfb;
-  --plane: #f9f9f7;
+  --surface-2: #ffffff;
+  --surface-sunken: #efeeea;
+
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
   --text-muted: #898781;
+
   --gridline: #e1e0d9;
   --axis: #c3c2b7;
   --border-hairline: rgba(11, 11, 11, 0.1);
+  --border-strong: rgba(11, 11, 11, 0.18);
 
-  --series-1: #2a78d6; /* blue   */
-  --series-2: #eb6834; /* orange */
-  --series-3: #1baf7a; /* aqua   */
-  --series-4: #eda100; /* yellow */
+  /* Validated categorical slots. Do not re-pick by eye. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
 
-  /* Status colours are fixed, never themed, and never reused as a series. */
+  /* Status is reserved: never reused as a series colour. */
   --status-good: #0ca30c;
   --status-warning: #fab219;
   --status-serious: #ec835a;
@@ -37,20 +47,41 @@
 
   --band-fill: rgba(42, 120, 214, 0.1);
   --target-fill: rgba(12, 163, 12, 0.1);
+
+  /* Accent wash, derived from series-1. Chrome only, never data. */
+  --accent: var(--series-1);
+  --accent-wash: rgba(42, 120, 214, 0.08);
+  --accent-glow: rgba(42, 120, 214, 0.22);
+
+  --shadow-sm: 0 1px 2px rgba(11, 11, 11, 0.05);
+  --shadow-md: 0 1px 3px rgba(11, 11, 11, 0.06), 0 6px 16px -6px rgba(11, 11, 11, 0.1);
+  --shadow-lg: 0 2px 6px rgba(11, 11, 11, 0.06), 0 18px 40px -16px rgba(11, 11, 11, 0.18);
+
+  /* A 1px inner highlight along the top edge, which is what makes a card
+     read as a physical surface rather than a rectangle. */
+  --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  --nav-blur: saturate(180%) blur(20px);
+  --nav-bg: rgba(252, 252, 251, 0.82);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
 
-    --surface-1: #1a1a19;
     --plane: #0d0d0d;
+    --surface-1: #1a1a19;
+    --surface-2: #232321;
+    --surface-sunken: #121211;
+
     --text-primary: #f0efec;
     --text-secondary: #c3c2b7;
     --text-muted: #898781;
+
     --gridline: #2c2c2a;
     --axis: #383835;
     --border-hairline: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.16);
 
     --series-1: #3987e5;
     --series-2: #d95926;
@@ -60,20 +91,36 @@
     --status-none: #2c2c2a;
     --band-fill: rgba(57, 135, 229, 0.14);
     --target-fill: rgba(12, 163, 12, 0.14);
+
+    --accent: var(--series-1);
+    --accent-wash: rgba(57, 135, 229, 0.12);
+    --accent-glow: rgba(57, 135, 229, 0.3);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.5), 0 8px 20px -8px rgba(0, 0, 0, 0.6);
+    --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 20px 48px -18px rgba(0, 0, 0, 0.75);
+    --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    --nav-bg: rgba(13, 13, 13, 0.76);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --surface-1: #1a1a19;
   --plane: #0d0d0d;
+  --surface-1: #1a1a19;
+  --surface-2: #232321;
+  --surface-sunken: #121211;
+
   --text-primary: #f0efec;
   --text-secondary: #c3c2b7;
   --text-muted: #898781;
+
   --gridline: #2c2c2a;
   --axis: #383835;
   --border-hairline: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
 
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -83,29 +130,185 @@
   --status-none: #2c2c2a;
   --band-fill: rgba(57, 135, 229, 0.14);
   --target-fill: rgba(12, 163, 12, 0.14);
+
+  --accent: var(--series-1);
+  --accent-wash: rgba(57, 135, 229, 0.12);
+  --accent-glow: rgba(57, 135, 229, 0.3);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.5), 0 8px 20px -8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 20px 48px -18px rgba(0, 0, 0, 0.75);
+  --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  --nav-bg: rgba(13, 13, 13, 0.76);
 }
 
-html,
+html {
+  background: var(--plane);
+  /* Stops the rubber-band overscroll showing white under a dark page. */
+  overscroll-behavior-y: none;
+}
+
 body {
   background: var(--plane);
   color: var(--text-primary);
-}
-
-body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Axis ticks and table columns must align vertically; standalone figures use
-   proportional figures. */
+/* Data alignment. Columns and axis ticks need tabular figures; a standalone
+   hero number looks better with proportional ones. */
 .tabular {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
-/* Texture fill: the accessibility channel. Off by default, on for forced
-   colours and print, never decorative. */
-@media (forced-colors: active) {
-  .series-fill {
-    forced-color-adjust: none;
+.eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The standard card surface: hairline, soft shadow, top edge highlight. */
+.panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border-hairline);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md), var(--edge-highlight);
+}
+
+.panel-flat {
+  background: var(--surface-1);
+  border: 1px solid var(--border-hairline);
+  border-radius: 14px;
+}
+
+/* ===================================================================
+   Motion. Everything here is suppressed under prefers-reduced-motion,
+   including the gauge sweep and the number count-up, which are the two
+   that actually move a lot.
+   =================================================================== */
+@keyframes ti-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ti-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ti-shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+@keyframes ti-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.animate-rise {
+  animation: ti-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade {
+  animation: ti-fade 260ms ease-out both;
+}
+
+.live-dot {
+  animation: ti-pulse 2.4s ease-in-out infinite;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 25%,
+    var(--gridline) 37%,
+    var(--surface-sunken) 63%
+  );
+  background-size: 200% 100%;
+  animation: ti-shimmer 1.4s linear infinite;
+  border-radius: 8px;
+}
+
+/* The gauge arc draws itself on mount by animating stroke-dashoffset. */
+.gauge-sweep {
+  transition: stroke-dashoffset 900ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.press {
+  transition: transform 140ms ease-out, background-color 160ms ease-out,
+    border-color 160ms ease-out, color 160ms ease-out;
+}
+
+.press:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
+}
+
+/* Hide scrollbars on the horizontal rails without losing the scroll. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* iOS: keep content clear of the home indicator and the notch. */
+.safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Range inputs on the check-in form, styled in both modes. */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--gridline);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 3px solid var(--surface-1);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 3px solid var(--surface-1);
+  cursor: pointer;
+}
+
+/* Keyboard focus stays visible everywhere. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
 }

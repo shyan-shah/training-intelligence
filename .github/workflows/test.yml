@@ -34,3 +34,18 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+
+      # Drives every tab in both colour schemes against fixture data, failing
+      # on console errors or horizontal overflow. This is what caught the
+      # hydration mismatch and the three-up stat row spilling off a phone.
+      - run: npx playwright install --with-deps chromium
+
+      - name: Start the app and smoke test every tab
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          ENABLE_PREVIEW: "1"
+        run: |
+          npm start -- -p 3100 &
+          npx wait-on http://localhost:3100/preview --timeout 60000
+          BASE_URL=http://localhost:3100 npm run smoke
