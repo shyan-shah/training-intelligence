@@ -285,6 +285,9 @@ finishes by running the doctor, so the log tells you what is still missing.
 
 ### 4. Check the setup
 
+Actions tab → **Check setup** → Run workflow. No Python on your machine and
+no `.env` needed. Locally it is the same thing:
+
 ```bash
 python -m ingest.run doctor
 ```
