@@ -179,7 +179,8 @@ whether a habit was hit or whether a week is a push, so the two cannot drift.
 
 ## Setup
 
-### 1. Database
+Full step-by-step, including the Supabase dashboard settings, is under
+**Getting it on your phone**. In short:
 
 ```bash
 psql "$SUPABASE_DB_URL" -f supabase/migrations/0001_init.sql
@@ -189,66 +190,37 @@ psql "$SUPABASE_DB_URL" -f supabase/migrations/0001_init.sql
 psql "$SUPABASE_DB_URL" -f supabase/migrations/0002_rls.sql
 ```
 
-Then seed the settings and races as the owning user, so `auth.uid()` resolves:
+The seeds resolve the owner by email and print the user id. Create the auth
+user first, and edit the email at the top of each file.
 
 ```bash
 psql "$SUPABASE_DB_URL" -f supabase/seed/athlete_settings.sql
 ```
 
-Every table has RLS with `user_id = auth.uid()` and `force row level security`.
-The browser only ever holds the anon key; the service key lives in GitHub
-Actions and nowhere else.
+They deliberately do **not** use `auth.uid()`. That reads the request JWT, so
+it is NULL when you run SQL as an admin and the insert fails the not-null
+constraint on `user_id`. The seeds raise a clear error if the auth user does
+not exist yet, and are safe to run twice.
 
-### 2. Secrets
+Every table has RLS with `user_id = auth.uid()` and `force row level
+security`. The browser only ever holds the anon key. The service key lives in
+GitHub Actions and nowhere else; it works despite `force` because
+`service_role` carries `BYPASSRLS`, which `force` does not override.
 
-Copy `.env.example` to `.env` for local work (it is gitignored). In CI, set
-each one as a GitHub Actions secret. `TI_USER_ID` is required: server-side
-writes pass `user_id` explicitly because the column default is `auth.uid()`,
-which is null under the service role.
-
-### 3. Audit before migrating anything
-
-```bash
-python -m ingest.run audit
-```
-
-This prints row counts, the latest date per table, per-source sync state and
-which settings are unset. It changes nothing. Read it before the first
-backfill.
-
-### 4. Backfill
+### Testing the database
 
 ```bash
-python -m ingest.run strava --days 90
+./supabase/test/run.sh
 ```
 
-```bash
-python -m ingest.run garmin-personal --days 90
-```
+Spins up a throwaway Postgres, runs the migrations and seeds, and asserts that
+every table has RLS enabled and forced with a policy, that the seeds are
+idempotent and refuse to run before the auth user exists, that a second
+signed-in user sees nothing and cannot write rows they do not own, and that
+`service_role` can still read and write. Nothing touches the real project.
 
-```bash
-python -m engine.ti.nightly --days 180
-```
-
-### 5. Web
-
-```bash
-cd web && npm install && npm run dev
-```
-
-Deploys to the existing Vercel project. Set `NEXT_PUBLIC_SUPABASE_URL` and
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` there.
-
-### 6. Chat tools
-
-In `vault-mcp`, import and register:
-
-```python
-from mcp.training_tools import register
-register(mcp)
-```
-
----
+It earned its place immediately: the seeds used to call `auth.uid()` and would
+have failed the first time anyone followed these steps.
 
 ## Getting it on your phone
 
@@ -266,9 +238,14 @@ In the Supabase dashboard, under Authentication:
 - **Redirect URLs**: add `https://<your-domain>/auth/confirm`. The link in the
   email will not work without it.
 
-Create exactly one user, with your own email. Sign-in uses
+Then create exactly one user under **Authentication → Users → Add user**,
+with your own email, and tick "Auto Confirm User". Sign-in uses
 `shouldCreateUser: false`, so nobody else can make an account by submitting
 their address at `/login`. RLS is the second line of defence, not the only one.
+
+Now run the seeds, which look that user up by email and print its id. Edit the
+email at the top of each file first. Copy the printed id: it is the
+`TI_USER_ID` secret in the next step.
 
 ### 2. Vercel
 

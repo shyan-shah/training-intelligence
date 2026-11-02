@@ -16,6 +16,14 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest
 
+  database:
+    # Runs the migrations and seeds against a throwaway Postgres and asserts
+    # RLS actually isolates users. The runner image ships PostgreSQL 16.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./supabase/test/run.sh
+
   web:
     runs-on: ubuntu-latest
     defaults:
