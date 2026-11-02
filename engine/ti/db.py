@@ -83,16 +83,17 @@ class Db:
         ]
 
         sent = 0
-        for chunk in _chunks(payload, 500):
-            params = {"on_conflict": on_conflict} if on_conflict else {}
-            r = self._client.post(
-                f"{self.base}/{table}",
-                params=params,
-                content=json.dumps(chunk),
-                headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
-            )
-            self._raise(r, f"upsert {table}")
-            sent += len(chunk)
+        for group in _by_key_signature(payload):
+            for chunk in _chunks(group, 500):
+                params = {"on_conflict": on_conflict} if on_conflict else {}
+                r = self._client.post(
+                    f"{self.base}/{table}",
+                    params=params,
+                    content=json.dumps(chunk),
+                    headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
+                )
+                self._raise(r, f"upsert {table}")
+                sent += len(chunk)
         log.info("upserted %d rows into %s", sent, table)
         return sent
 
@@ -143,6 +144,24 @@ class Db:
         if r.status_code >= 400:
             # Never log the key; httpx keeps it in headers, not the body.
             raise RuntimeError(f"{what} failed: HTTP {r.status_code} {r.text[:400]}")
+
+
+def _by_key_signature(rows: Sequence[dict]) -> Iterable[Sequence[dict]]:
+    """Group rows so every request carries one uniform set of keys.
+
+    PostgREST rejects a bulk insert whose objects differ in their keys
+    (PGRST102). Callers drop keys whose value is None, so a day Garmin has
+    sleep for and a day it does not produce different shapes in one batch.
+
+    Grouping rather than padding the gaps with null is deliberate: the writes
+    use resolution=merge-duplicates, which updates every column it is given,
+    so a padded null would erase a stored value whenever a source is briefly
+    unavailable.
+    """
+    groups: dict[frozenset, list[dict]] = {}
+    for row in rows:
+        groups.setdefault(frozenset(row), []).append(row)
+    return list(groups.values())
 
 
 def _chunks(items: Sequence[dict], size: int) -> Iterable[Sequence[dict]]:
