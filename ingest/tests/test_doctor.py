@@ -171,13 +171,36 @@ def test_unreachable_host_is_not_reported_as_a_key_problem(monkeypatch):
 # ---------------------------------------------------------------------------
 # Optional sources
 # ---------------------------------------------------------------------------
-def test_unconfigured_sources_skip_rather_than_fail(monkeypatch):
-    for name in ("STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_REFRESH_TOKEN",
-                 "GARMIN_PERSONAL_TOKEN", "GARMIN_EMAIL", "GARMIN_PASSWORD"):
+def test_unconfigured_strava_skips_rather_than_fails(monkeypatch):
+    for name in ("STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_REFRESH_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    assert doctor.check_strava()[0].ok is None
+
+
+def test_no_garmin_source_at_all_is_a_failure(monkeypatch):
+    """Without Garmin there is no sleep, HRV or resting HR, so readiness
+    cannot be computed. That is not a skip."""
+    for name in ("GARMIN_EMAIL", "GARMIN_PASSWORD", "GARMIN_PERSONAL_TOKEN"):
         monkeypatch.delenv(name, raising=False)
 
-    assert doctor.check_strava()[0].ok is None
-    assert find(doctor.check_garmin(), "Garmin Personal API").ok is None
+    r = find(doctor.check_garmin(), "Garmin")
+    assert r.ok is False
+    assert "GARMIN_EMAIL" in r.remedy
+    assert "readiness" in r.remedy
+
+
+def test_login_route_alone_is_a_complete_setup(monkeypatch):
+    """The Personal key is optional: the login route covers strictly more."""
+    monkeypatch.setenv("GARMIN_EMAIL", "a@b.c")
+    monkeypatch.setenv("GARMIN_PASSWORD", "secret")
+    monkeypatch.delenv("GARMIN_PERSONAL_TOKEN", raising=False)
+
+    results = doctor.check_garmin()
+    assert find(results, "Garmin login route").ok is True
+    personal = find(results, "Garmin Personal API")
+    assert personal.ok is None
+    assert "strictly more" in personal.detail
+    assert not [r for r in results if r.ok is False]
 
 
 def test_partial_strava_credentials_fail_and_name_the_helper(monkeypatch):

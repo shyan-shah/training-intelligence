@@ -333,18 +333,38 @@ cache.
 
 The worker itself is served `no-cache`. A cached service worker never updates.
 
-## Before the first Garmin run
+## The two Garmin routes
 
-`ingest/garmin_personal.py` carries endpoint paths and field names that are
-**not verified**. Garmin's Health API spec sits behind the developer portal and
-is not public. Check the swagger when the Personal key is issued and correct
-the `ENDPOINTS` block and the field mappings; everything downstream reads from
-that one block.
+**The login route is the primary source, and the default.** It signs in with
+the same email and password as the Garmin Connect app and reads everything the
+app can see: sleep, HRV, resting HR, body battery, stress, steps, body
+composition, activities, and the training metrics the official Personal tier
+does not expose at all (readiness, training status, acute and chronic load,
+VO2max). It needs no developer account and no key approval.
 
-The swagger also settles two things that affect the workflow but not the
-schema: whether the Personal tier offers pull endpoints at all (the Health API
-is push-oriented, so this may need a webhook receiver instead of a scheduled
-pull), and what the backfill limits are.
+What it costs: it is unofficial, so Garmin can change it and there is nobody
+to ask; repeated logins from a CI address can trigger an MFA or captcha
+challenge, which cannot be answered headlessly; and your Garmin password lives
+in GitHub Actions secrets. When it does fail it fails loudly, `sync_status`
+records the error, and the page shows the source as stale rather than quietly
+serving old numbers.
+
+**The official Personal API is optional.** Set `GARMIN_PERSONAL_TOKEN` and it
+runs as well; leave it blank and the step skips itself. It is worth adding only
+if you want an officially supported path alongside, because it covers strictly
+less: no readiness, no training status, no VO2max.
+
+If you do add it, note that `ingest/garmin_personal.py` carries endpoint paths
+and field names that are **not verified**. The Health API spec sits behind the
+developer portal. Check the swagger when the key is issued and correct the
+`ENDPOINTS` block; everything downstream reads from that one place. The swagger
+also settles whether the Personal tier offers pull endpoints at all, since the
+Health API is push-oriented and may need a webhook receiver rather than a
+scheduled pull.
+
+The brief specified the Personal API as the backbone with the login route as a
+five-column top-up. That is inverted here: the login route turned out to cover
+a superset, and it works today without an approval process.
 
 ---
 
@@ -354,7 +374,7 @@ pull), and what the backfill limits are.
 python -m pytest
 ```
 
-184 Python tests, a 14-check database harness (`supabase/test/run.sh`), and a
+208 Python tests, a 14-check database harness (`supabase/test/run.sh`), and a
 21-case browser smoke test described under **The page**. The ones worth knowing about:
 
 - **The hand calculation** (`test_load.py`). The acceptance check asks that
@@ -493,12 +513,12 @@ per-day regardless of training.
    and the Actions secrets are set. This is the only item between here and a
    working page. The Bootstrap workflow does the database half, and
    `python -m ingest.run doctor` tells you what is still missing.
-2. **Verify the Garmin Personal API endpoints.** `ingest/garmin_personal.py`
-   carries unverified paths and field names; the swagger is behind the
-   developer portal. Check them when the key is issued and correct the one
-   `ENDPOINTS` block. The swagger also decides whether the Personal tier offers
-   pull endpoints at all, or whether this needs a webhook receiver instead of a
-   scheduled pull.
+2. **Confirm the login route works from CI.** It is the primary Garmin source
+   and needs only `GARMIN_EMAIL` and `GARMIN_PASSWORD`. The risk is a Garmin
+   MFA or captcha challenge on a login from a GitHub runner, which cannot be
+   answered headlessly. Run the Ingest workflow once and look. The official
+   Personal API is optional and covers strictly less; see **The two Garmin
+   routes**.
 3. **Set LTHR and CSS**, or accept that HR-fallback TSS and swim TSS stay off.
    A threshold test and a 400/200 CSS test are the inputs.
 4. **Settle the Garmin terms question** before relying on the chat tools. Read

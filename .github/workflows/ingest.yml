@@ -30,27 +30,8 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Garmin, official Personal API
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          TI_USER_ID: ${{ secrets.TI_USER_ID }}
-          GARMIN_PERSONAL_TOKEN: ${{ secrets.GARMIN_PERSONAL_TOKEN }}
-        run: python -m ingest.run garmin-personal --days "${{ inputs.days || 7 }}"
-
-      # The login route fills the five fields the Personal tier does not
-      # expose. Its token dies roughly monthly, so a failure here must not fail
-      # the workflow: only those columns go null.
-      - name: Garmin, login route top-up
-        continue-on-error: true
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          TI_USER_ID: ${{ secrets.TI_USER_ID }}
-          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
-          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
-        run: python -m ingest.run garmin-login --days "${{ inputs.days || 7 }}"
-
+      # Strava first: it is the most reliable source, so it lands even if
+      # Garmin is having a bad day.
       - name: Strava
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -60,6 +41,30 @@ jobs:
           STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
           STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
         run: python -m ingest.run strava --days "${{ inputs.days || 7 }}"
+
+      # Garmin, primary source: wellness, body composition and activities,
+      # plus readiness, training status and VO2max which the official
+      # Personal tier does not expose. Fails the run if it breaks, because a
+      # silent failure here leaves the page quietly empty.
+      - name: Garmin, login route
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: python -m ingest.run garmin-login --days "${{ inputs.days || 7 }}"
+
+      # Optional. Skips itself when no key is configured. Only worth adding
+      # if you want an officially supported path alongside the login route.
+      - name: Garmin, official Personal API (optional)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+          GARMIN_PERSONAL_TOKEN: ${{ secrets.GARMIN_PERSONAL_TOKEN }}
+        run: python -m ingest.run garmin-personal --days "${{ inputs.days || 7 }}"
 
       - name: Evolt, parse anything uploaded but not yet read
         env:

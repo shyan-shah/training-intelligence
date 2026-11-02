@@ -178,51 +178,109 @@ def check_strava() -> list[Result]:
 # Garmin
 # ---------------------------------------------------------------------------
 def check_garmin() -> list[Result]:
-    token = _env("GARMIN_PERSONAL_TOKEN")
+    """The login route is the primary source; the Personal API is optional.
+
+    Without one of them there is no sleep, HRV or resting HR, so readiness
+    cannot be computed at all. That is a failure, not a skip.
+    """
     out: list[Result] = []
+    email, password = _env("GARMIN_EMAIL"), _env("GARMIN_PASSWORD")
+    token = _env("GARMIN_PERSONAL_TOKEN")
+
+    if email and password:
+        try:
+            import garminconnect  # noqa: F401
+            out.append(Result("Garmin login route", True,
+                              "credentials set, library present"))
+        except ImportError:
+            out.append(Result("Garmin login route", False,
+                              "garminconnect is not installed",
+                              "pip install -r requirements.txt"))
+    elif token:
+        out.append(Result("Garmin login route", None,
+                          "not configured, using the official API instead"))
+    else:
+        out.append(Result("Garmin", False, "no Garmin source configured",
+                          "Set GARMIN_EMAIL and GARMIN_PASSWORD. Without a Garmin "
+                          "source there is no sleep, HRV or resting HR, so readiness "
+                          "cannot be computed."))
 
     if not token:
-        out.append(Result("Garmin Personal API", None, "not configured"))
-    else:
-        from .garmin_personal import BASE, ENDPOINTS
-        from datetime import datetime, timedelta, timezone
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=1)
-        try:
-            r = httpx.get(
-                f"{BASE}{ENDPOINTS['daily']}",
-                headers={"Authorization": f"Bearer {token}"},
-                params={"uploadStartTimeInSeconds": int(start.timestamp()),
-                        "uploadEndTimeInSeconds": int(end.timestamp())},
-                timeout=TIMEOUT,
-            )
-            if r.status_code == 401:
-                out.append(Result("Garmin Personal API", False, "401 unauthorised",
-                                  "Token rejected. Regenerate at developer.garmin.com."))
-            elif r.status_code == 404:
-                out.append(Result("Garmin Personal API", False, "404 on the dailies endpoint",
-                                  "Endpoint path is wrong. Check the swagger against the "
-                                  "ENDPOINTS block in ingest/garmin_personal.py."))
-            elif r.status_code >= 400:
-                out.append(Result("Garmin Personal API", False, f"HTTP {r.status_code}",
-                                  "Check the swagger against ingest/garmin_personal.py."))
-            else:
-                out.append(Result("Garmin Personal API", True,
-                                  f"{len(r.json() or [])} summary in the last 24h"))
-        except httpx.HTTPError as e:
-            out.append(Result("Garmin Personal API", False, type(e).__name__))
+        out.append(Result("Garmin Personal API", None,
+                          "not configured, which is fine: the login route covers "
+                          "strictly more"))
+        return out
 
-    if _env("GARMIN_EMAIL") and _env("GARMIN_PASSWORD"):
-        try:
-            from garminconnect import Garmin  # noqa: F401
-            out.append(Result("Garmin login route", True, "credentials set, library present"))
-        except ImportError:
-            out.append(Result("Garmin login route", False, "garminconnect not installed",
-                              "pip install -r requirements.txt. Only the top-up columns "
-                              "depend on this."))
+    from datetime import datetime, timedelta, timezone
+
+    from .garmin_personal import BASE, ENDPOINTS
+
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=1)
+    try:
+        r = httpx.get(
+            f"{BASE}{ENDPOINTS['daily']}",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"uploadStartTimeInSeconds": int(start.timestamp()),
+                    "uploadEndTimeInSeconds": int(end.timestamp())},
+            timeout=TIMEOUT,
+        )
+    except httpx.HTTPError as e:
+        out.append(Result("Garmin Personal API", False, type(e).__name__))
+        return out
+
+    if r.status_code == 401:
+        out.append(Result("Garmin Personal API", False, "401 unauthorised",
+                          "Token rejected. Regenerate at developer.garmin.com, or "
+                          "drop it and rely on the login route."))
+    elif r.status_code == 404:
+        out.append(Result("Garmin Personal API", False, "404 on the dailies endpoint",
+                          "Endpoint path is wrong. Check the swagger against the "
+                          "ENDPOINTS block in ingest/garmin_personal.py."))
+    elif r.status_code >= 400:
+        out.append(Result("Garmin Personal API", False, f"HTTP {r.status_code}"))
     else:
-        out.append(Result("Garmin login route", None,
-                          "not configured, top-up columns will be null"))
+        out.append(Result("Garmin Personal API", True,
+                          f"{len(r.json() or [])} summary in the last 24h"))
+    return out
+
+
+def check_freshness() -> list[Result]:
+    """What each source last did, read from sync_status.
+
+    This is the check that answers "is it actually running", as opposed to
+    "are the credentials shaped right".
+    """
+    url, key, user = _env("SUPABASE_URL"), _env("SUPABASE_SERVICE_KEY"), _env("TI_USER_ID")
+    if not (url and key and user):
+        return []
+
+    try:
+        r = httpx.get(
+            f"{url.rstrip('/')}/rest/v1/sync_status",
+            params={"select": "source,last_success,last_error", "user_id": f"eq.{user}"},
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            timeout=TIMEOUT,
+        )
+    except httpx.HTTPError:
+        return []
+    if r.status_code >= 400:
+        return []
+
+    rows = r.json()
+    if not rows:
+        return [Result("Last run", None, "nothing has ingested yet")]
+
+    out: list[Result] = []
+    for row in sorted(rows, key=lambda x: x["source"]):
+        err = row.get("last_error")
+        when = (row.get("last_success") or "never")[:16].replace("T", " ")
+        out.append(Result(
+            f"Last run: {row['source']}",
+            not err,
+            f"ok {when}" if not err else f"last error: {err[:70]}",
+            "Open the failing step in the Actions log." if err else "",
+        ))
     return out
 
 
@@ -255,4 +313,5 @@ def run() -> Report:
     report.add(*check_strava())
     report.add(*check_garmin())
     report.add(*check_extras())
+    report.add(*check_freshness())
     return report

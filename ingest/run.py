@@ -26,14 +26,28 @@ log = logging.getLogger("ingest")
 
 
 def cmd_garmin_personal(cfg: Config, db: Db, args) -> None:
+    """The official Health API. Optional: only runs if a key is configured.
+
+    Covers strictly less than the login route (no readiness, training status
+    or VO2max) and its endpoint paths are unverified, so it is the
+    alternative rather than the default.
+    """
+    if not cfg.garmin_personal_token:
+        log.info("GARMIN_PERSONAL_TOKEN not set, skipping the official API")
+        return
     counts = garmin_personal.ingest(cfg, db, days=args.days)
     log.info("garmin personal api: %s", counts)
 
 
 def cmd_garmin_login(cfg: Config, db: Db, args) -> None:
-    # Never fatal by design: see the docstring in garmin_login.py.
-    n = garmin_login.ingest(cfg, db, days=args.days)
-    log.info("garmin login route: %d days topped up", n)
+    """The primary Garmin source: wellness, body composition and activities.
+
+    Raises on failure. With the login route as the only Garmin source, a
+    swallowed error would leave the page quietly empty, which is worse than a
+    red workflow run.
+    """
+    counts = garmin_login.ingest(cfg, db, days=args.days, strict=True)
+    log.info("garmin login route: %s", counts)
 
 
 def cmd_strava(cfg: Config, db: Db, args) -> None:
