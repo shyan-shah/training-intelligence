@@ -1,0 +1,81 @@
+name: Bootstrap database
+
+# One-click setup. Applies the migrations and the seeds, then runs the doctor
+# so the log tells you whether everything is wired up.
+#
+# Needs one extra secret beyond the usual set:
+#
+#   SUPABASE_DB_URL   Supabase dashboard > Project Settings > Database >
+#                     Connection string > URI, with your database password
+#                     substituted for [YOUR-PASSWORD].
+#
+# Create the auth user first (Authentication > Users > Add user, Auto Confirm
+# on). The seeds resolve the owner by email and refuse to run without it.
+#
+# Safe to run more than once: the migrations are `if not exists` throughout
+# and the seeds are idempotent.
+
+on:
+  workflow_dispatch:
+    inputs:
+      owner_email:
+        description: "Email of the auth user that owns the data"
+        required: true
+      run_seeds:
+        description: "Apply the seed data as well as the migrations"
+        type: boolean
+        default: true
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply migrations
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$PGURL" ]; then
+            echo "SUPABASE_DB_URL is not set. See the header of this workflow." >&2
+            exit 1
+          fi
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_init.sql
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f supabase/migrations/0002_rls.sql
+
+      - name: Apply seeds
+        if: ${{ inputs.run_seeds }}
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+          OWNER: ${{ inputs.owner_email }}
+        run: |
+          # The seeds carry a default email; point them at the one given here.
+          for f in supabase/seed/athlete_settings.sql supabase/seed/races.sql; do
+            sed "s/shyansshah@gmail.com/$OWNER/" "$f" | psql "$PGURL" -v ON_ERROR_STOP=1
+          done
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Check the setup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TI_USER_ID: ${{ secrets.TI_USER_ID }}
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
+          GARMIN_PERSONAL_TOKEN: ${{ secrets.GARMIN_PERSONAL_TOKEN }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_INCLUDE_SENSITIVE: "0"
+        # Keeps going so the log shows every problem at once rather than the
+        # first. TI_USER_ID will fail here until you copy it from the seed
+        # output above into the secrets.
+        continue-on-error: true
+        run: python -m ingest.run doctor

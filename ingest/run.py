@@ -6,6 +6,7 @@ own workflow step.
     python -m ingest.run strava         --days 90
     python -m ingest.run evolt
     python -m ingest.run audit
+    python -m ingest.run doctor
 """
 from __future__ import annotations
 
@@ -128,6 +129,19 @@ def cmd_audit(cfg: Config, db: Db, args) -> None:
     print()
 
 
+def cmd_doctor() -> int:
+    """Check every credential and say exactly what is wrong.
+
+    Runs before Config is built, because the whole point is diagnosing the
+    case where the config is incomplete.
+    """
+    from . import doctor as doctor_mod
+
+    report = doctor_mod.run()
+    print(report.render())
+    return 1 if report.failures else 0
+
+
 COMMANDS = {
     "garmin-personal": cmd_garmin_personal,
     "garmin-login": cmd_garmin_login,
@@ -140,9 +154,14 @@ COMMANDS = {
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     ap = argparse.ArgumentParser(description="Training Intelligence ingest")
-    ap.add_argument("command", choices=sorted(COMMANDS))
+    ap.add_argument("command", choices=sorted([*COMMANDS, "doctor"]))
     ap.add_argument("--days", type=int, default=7)
     args = ap.parse_args()
+
+    # Diagnosis has to work when the configuration is broken, so it runs
+    # before Config.from_env, which raises on the first missing value.
+    if args.command == "doctor":
+        return cmd_doctor()
 
     try:
         cfg = Config.from_env()

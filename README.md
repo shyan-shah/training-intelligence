@@ -266,7 +266,40 @@ Add every secret from `.env.example` to the repository's Actions secrets. The
 ingest workflow runs four times a day, the compute nightly, the report on
 Sunday. Until the secrets exist, the workflows fail and the page stays empty.
 
-### 4. Install it
+Two things make this less painful.
+
+**The Strava helper** walks the OAuth dance, which is the fiddliest part:
+
+```bash
+python scripts/strava_token.py
+```
+
+It prints the three secrets to store. It writes nothing to disk, so the token
+never lands in a file by accident.
+
+**The Bootstrap workflow** applies the migrations and seeds for you, so you
+never need psql locally. Add one extra secret, `SUPABASE_DB_URL` (Project
+Settings → Database → Connection string → URI, with your password
+substituted), then run **Actions → Bootstrap database** with your email. It
+finishes by running the doctor, so the log tells you what is still missing.
+
+### 4. Check the setup
+
+```bash
+python -m ingest.run doctor
+```
+
+Tells you exactly what is wrong rather than leaving you to read a failed
+workflow log: which variable is missing, whether the key is rejected, whether
+the migrations ran, whether the seed was applied, whether `TI_USER_ID` matches
+the seeded row, whether the scan bucket is private, and whether the Strava
+token still refreshes with both scopes. It changes nothing, and it runs at the
+end of the Bootstrap workflow too.
+
+Sources you have not configured are skipped rather than failed, so it is
+useful from the very first step.
+
+### 5. Install it
 
 On the iPhone, in **Safari** (not Chrome, which cannot install to the home
 screen on iOS):
@@ -321,8 +354,8 @@ pull), and what the backfill limits are.
 python -m pytest
 ```
 
-169 Python tests, plus a 21-case browser smoke test described under
-**The page**. The ones worth knowing about:
+184 Python tests, a 14-check database harness (`supabase/test/run.sh`), and a
+21-case browser smoke test described under **The page**. The ones worth knowing about:
 
 - **The hand calculation** (`test_load.py`). The acceptance check asks that
   CTL, ATL and TSB match a hand calculation on three sample days. Rather than
@@ -458,7 +491,8 @@ per-day regardless of training.
 
 1. **Secrets and the database.** Nothing runs until the migrations are applied
    and the Actions secrets are set. This is the only item between here and a
-   working page.
+   working page. The Bootstrap workflow does the database half, and
+   `python -m ingest.run doctor` tells you what is still missing.
 2. **Verify the Garmin Personal API endpoints.** `ingest/garmin_personal.py`
    carries unverified paths and field names; the swagger is behind the
    developer portal. Check them when the key is issued and correct the one
