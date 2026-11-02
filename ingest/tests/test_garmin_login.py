@@ -265,6 +265,88 @@ def test_body_composition_skips_entries_with_no_weight():
     assert gl.fetch_body(BodyApi(), days=90) == []
 
 
+# ---------------------------------------------------------------------------
+# Gear
+# ---------------------------------------------------------------------------
+class GearApi:
+    """Garmin keeps distance on a separate per-item stats call."""
+    profile_id = 12345
+
+    def get_gear_list(self, **kw):
+        return [
+            {"uuid": "g1", "gearTypeName": "Shoes", "displayName": "vaporflys",
+             "makeName": "Nike", "modelName": "Vaporfly", "gearStatusName": "active"},
+            {"uuid": "g2", "gearTypeName": "Shoes", "displayName": "Evo SL",
+             "makeName": "Adidas", "modelName": "Evo SL", "gearStatusName": "active",
+             "maximumMeters": 500000},
+            {"uuid": "g3", "gearTypeName": "Bike", "displayName": "Propel",
+             "makeName": "Giant", "gearStatusName": "retired"},
+            {"uuid": "g4", "gearTypeName": "Other", "displayName": "Ignore me"},
+            {"gearTypeName": "Shoes", "displayName": "No uuid"},
+        ]
+
+    def get_gear_stats(self, uuid):
+        return {"g1": {"totalDistance": 331481.0},
+                "g2": {"totalDistance": 210124.0},
+                "g3": {"totalDistance": 1204442.0}}.get(uuid, {})
+
+
+def test_gear_comes_through_with_distance():
+    """Garmin tracks gear too, so dropping Strava does not cost shoe mileage."""
+    rows = gl.fetch_gear(GearApi())
+    by_id = {r["source_id"]: r for r in rows}
+
+    assert set(by_id) == {"g1", "g2", "g3"}      # unknown type and id-less dropped
+    assert by_id["g1"]["gear_type"] == "shoe"
+    assert by_id["g1"]["distance_m"] == 331481.0
+    assert by_id["g1"]["brand"] == "Nike"
+    assert by_id["g3"]["gear_type"] == "bike"
+    assert by_id["g3"]["retired"] is True
+
+
+def test_carbon_racers_get_a_shorter_replacement_threshold():
+    rows = {r["source_id"]: r for r in gl.fetch_gear(GearApi())}
+    assert rows["g1"]["retire_at_m"] == gl.SHOE_RETIRE_M["vaporfly"]
+    assert rows["g1"]["retire_at_m"] < gl.SHOE_RETIRE_M["DEFAULT"]
+
+
+def test_a_limit_set_in_garmin_wins_over_our_default():
+    rows = {r["source_id"]: r for r in gl.fetch_gear(GearApi())}
+    assert rows["g2"]["retire_at_m"] == 500000
+
+
+def test_bikes_get_no_replacement_threshold():
+    rows = {r["source_id"]: r for r in gl.fetch_gear(GearApi())}
+    assert rows["g3"]["retire_at_m"] is None
+
+
+def test_gear_falls_back_to_the_profile_endpoint():
+    """Older library versions expose get_gear(profileNumber) instead."""
+    class Fallback:
+        profile_id = 999
+
+        def get_gear_list(self, **kw):
+            raise RuntimeError("not available")
+
+        def get_gear(self, profile_number):
+            assert profile_number == "999"
+            return [{"uuid": "x", "gearTypeName": "Shoes", "displayName": "Pegasus"}]
+
+        def get_gear_stats(self, uuid):
+            return {"totalDistance": 60825.0}
+
+    rows = gl.fetch_gear(Fallback())
+    assert len(rows) == 1
+    assert rows[0]["distance_m"] == 60825.0
+
+
+def test_no_gear_is_an_empty_list():
+    class NoGear:
+        def get_gear_list(self, **kw):
+            return []
+    assert gl.fetch_gear(NoGear()) == []
+
+
 def test_missing_credentials_raise_a_clear_error():
     from engine.ti.config import Config
     cfg = Config(supabase_url="x", supabase_service_key="y", user_id="z")

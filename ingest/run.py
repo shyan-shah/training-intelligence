@@ -51,6 +51,15 @@ def cmd_garmin_login(cfg: Config, db: Db, args) -> None:
 
 
 def cmd_strava(cfg: Config, db: Db, args) -> None:
+    """Optional. Garmin already covers activities and gear.
+
+    Worth adding only if something reaches Strava without going through the
+    watch first, a Zwift ride synced directly for example. Deduping handles
+    the overlap when both are on.
+    """
+    if not (cfg.strava_client_id and cfg.strava_client_secret and cfg.strava_refresh_token):
+        log.info("Strava not configured, skipping. Garmin covers activities and gear.")
+        return
     n = strava.ingest_activities(cfg, db, days=args.days)
     g = strava.ingest_gear(cfg, db)
     log.info("strava: %d activities, %d gear items", n, g)

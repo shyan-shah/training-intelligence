@@ -305,6 +305,79 @@ def fetch_activities(api, days: int = 90) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Gear
+# ---------------------------------------------------------------------------
+# Replacement thresholds in metres, by model. Carbon-plated racers wear out
+# sooner than daily trainers, which is why this is per-model rather than one
+# number. Garmin can carry its own limit per item; that wins when set.
+SHOE_RETIRE_M = {"vaporfly": 350_000, "alphafly": 350_000, "pro": 400_000,
+                 "zoom fly": 650_000, "DEFAULT": 700_000}
+
+_GEAR_TYPES = {"shoes": "shoe", "shoe": "shoe", "bike": "bike", "bikes": "bike"}
+
+
+def _retire_at(model: str | None, name: str | None) -> int:
+    hay = f"{model or ''} {name or ''}".lower()
+    for key, limit in SHOE_RETIRE_M.items():
+        if key != "DEFAULT" and key in hay:
+            return limit
+    return SHOE_RETIRE_M["DEFAULT"]
+
+
+def fetch_gear(api) -> list[dict]:
+    """Shoes and bikes with their accumulated distance.
+
+    Garmin tracks gear the same way Strava does, so dropping Strava does not
+    cost the shoe mileage alert. Distance comes from the per-item stats call,
+    since the list entry does not carry a running total.
+    """
+    items = _try("gear list", "-", lambda: api.get_gear_list())
+    if not items:
+        profile_id = getattr(api, "profile_id", None)
+        if profile_id:
+            raw = _try("gear", "-", lambda: api.get_gear(str(profile_id)))
+            items = raw if isinstance(raw, list) else (raw or {}).get("gearDTOList")
+    if not items:
+        return []
+
+    rows: list[dict] = []
+    for g in items:
+        uuid = _first(g, "uuid", "gearPk")
+        if not uuid:
+            continue
+
+        type_name = str(_first(g, "gearTypeName", "gearType") or "").lower()
+        gear_type = _GEAR_TYPES.get(type_name)
+        if gear_type is None:
+            gear_type = "shoe" if "shoe" in type_name else "bike" if "bike" in type_name else None
+        if gear_type is None:
+            continue
+
+        stats = _try("gear stats", str(uuid), lambda u=uuid: api.get_gear_stats(u))
+        distance = _num(_first(stats, "totalDistance")) or 0.0
+
+        name = _first(g, "displayName", "customMakeModel")
+        model = _first(g, "modelName", "customMakeModel")
+        status = str(_first(g, "gearStatusName", "gearStatus") or "").lower()
+
+        # Garmin lets you set a replacement distance per item. Prefer it.
+        own_limit = _num(_first(g, "maximumMeters"))
+
+        rows.append({
+            "source_id": str(uuid),
+            "gear_type": gear_type,
+            "name": name,
+            "brand": _first(g, "makeName", "brandName"),
+            "model_name": model,
+            "distance_m": distance,
+            "retired": status in ("retired", "inactive"),
+            "retire_at_m": (own_limit if own_limit
+                            else _retire_at(model, name) if gear_type == "shoe" else None),
+        })
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 def ingest(cfg: Config, db: Db, days: int = 90, strict: bool = True) -> dict[str, int]:
@@ -333,6 +406,7 @@ def ingest(cfg: Config, db: Db, days: int = 90, strict: bool = True) -> dict[str
                                      on_conflict="user_id,measured_at,source"),
             "activities": db.upsert("activities", fetch_activities(api, days),
                                     on_conflict="user_id,source,source_id"),
+            "gear": db.upsert("gear", fetch_gear(api), on_conflict="user_id,source_id"),
         }
     except Exception as e:
         db.mark_sync("garmin_login", ok=False, error=f"{type(e).__name__}: {e}"[:400])

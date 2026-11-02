@@ -30,9 +30,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # Strava first: it is the most reliable source, so it lands even if
-      # Garmin is having a bad day.
-      - name: Strava
+      # Optional. Garmin already covers activities and gear, so this is only
+      # worth configuring if something reaches Strava without going through
+      # the watch, a Zwift ride synced directly for example. Skips itself
+      # when the secrets are absent, and runs first when present so it lands
+      # even if Garmin is having a bad day.
+      - name: Strava (optional)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

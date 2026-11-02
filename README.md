@@ -333,6 +333,25 @@ cache.
 
 The worker itself is served `no-cache`. A cached service worker never updates.
 
+## Which sources you actually need
+
+**Garmin alone is a complete setup.** The login route covers daily wellness,
+body composition, activities and gear, which is everything the page reads
+except Evolt scans and the manual check-in.
+
+**Strava is optional.** It duplicates activities and gear, so it earns its
+place only if something reaches Strava without going through the watch
+first: a Zwift ride synced directly, a manual entry, or an activity from
+another app. If everything you record starts on the watch, skip it. The
+ingest step skips itself when the secrets are absent, and the dedupe handles
+the overlap when both are on.
+
+A ten second check: compare the activity count for the last month in Garmin
+Connect against Strava. If they match, Strava adds nothing.
+
+**Evolt** is uploaded by hand or logged from a Claude chat. **nutrition** and
+the **daily check-in** are entered in the app.
+
 ## The two Garmin routes
 
 **The login route is the primary source, and the default.** It signs in with
