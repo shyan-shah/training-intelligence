@@ -15,7 +15,10 @@ Two rules hold throughout:
   * Write tools apply exactly the same validation as the in-app path, so a
     scan logged from chat cannot bypass the range checks.
 
-Mount into vault-mcp with `register(mcp)`, or run standalone for testing.
+vault-mcp is TypeScript, so it cannot import these. It reaches them over HTTP
+through `mcp/http_service.py`, which keeps the engine — and the validation the
+write tools depend on — in one language. `register()` below is still the right
+entry point for a Python FastMCP host, and `__main__` runs one for testing.
 """
 from __future__ import annotations
 

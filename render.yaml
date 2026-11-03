@@ -1,0 +1,33 @@
+# Deploys the training tools' HTTP front door, which vault-mcp proxies to.
+#
+# Nothing else in this repo runs as a service: ingest, nightly and weekly are
+# GitHub Actions, and the page is on Vercel. This exists only so the four
+# tools in mcp/ are reachable from a TypeScript MCP server without the engine
+# being rewritten in TypeScript.
+#
+# TRAINING_API_SECRET is generated here. Copy it into vault-mcp's environment
+# as TRAINING_API_SECRET, or every call comes back 401.
+#
+# The build installs the full requirements.txt, which pulls pdfplumber,
+# garminconnect and anthropic that this service never imports. Left as one
+# file rather than splitting the runtime deps; it costs about a minute of
+# build time and nothing at runtime.
+services:
+  - type: web
+    name: training-tools
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m mcp.http_service
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: TI_USER_ID
+        sync: false
+      - key: TRAINING_API_SECRET
+        generateValue: true
