@@ -159,12 +159,37 @@ Daily check-in      ─┘                      │                     └─> 
 Everything lands in one Supabase project, so the page, the chat tools and the
 Sunday push read the same rows and cannot disagree.
 
+### Wiring the chat tools into vault-mcp
+
+`vault-mcp` is TypeScript and these tools are Python, so they do not mount
+directly. `training_summary` is not a row read: it computes HRV baseline and
+position, rolling means and gain quality through `engine/ti/`, and the write
+tools apply the same validation as the app. A TypeScript reimplementation
+would put that maths in two places, free to drift, and a drift in the write
+validation would admit rows the app rejects. So `mcp/http_service.py` puts the
+four tools behind HTTP and vault-mcp proxies to it.
+
+1. Deploy this repo's `render.yaml` as a Render blueprint. Set `SUPABASE_URL`,
+   `SUPABASE_SERVICE_KEY` and `TI_USER_ID`; `TRAINING_API_SECRET` is generated
+   for you.
+2. In vault-mcp, set `TRAINING_API_URL` to the service's URL and
+   `TRAINING_API_SECRET` to the value Render generated, then redeploy.
+
+Set both or neither: with either missing the tools are not registered, so the
+connector never advertises a tool that cannot work. `GET /health` needs no
+secret and lists the tools it is serving.
+
+The service holds the service key, so `TRAINING_API_SECRET` is the only thing
+in front of the data. It is checked with `hmac.compare_digest`, and a failing
+tool returns its exception type and nothing else — the reason stays in the
+server log rather than going to a chat.
+
 | Directory | What it holds |
 |---|---|
 | `supabase/` | Schema, RLS policies, seed data |
 | `engine/ti/` | The analytics engine. Pure stdlib maths, no LLM, fully tested |
 | `ingest/` | One module per source, plus validation and dedupe |
-| `mcp/` | The four tools to mount into `vault-mcp` |
+| `mcp/` | The four chat tools, and the HTTP service `vault-mcp` proxies to |
 | `web/` | The Next.js `/training` page, installable as a PWA |
 | `.github/workflows/` | Ingest, nightly compute, weekly report, CI |
 
