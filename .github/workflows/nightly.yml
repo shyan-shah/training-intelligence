@@ -1,11 +1,27 @@
 name: Nightly compute
 
-# 02:12 Europe/London. Runs after the 23:17 ingest so it computes on a full day.
-# Cron in Actions is UTC, which means this drifts by an hour across BST. That is
-# acceptable here: nothing downstream depends on the exact minute.
+# Runs after every ingest, and on a cron as a backstop.
+#
+# The cron alone was not enough, for two reasons seen on 2026-11-03. Actions
+# schedules are best effort: this fired at 09:27 against an 02:12 cron, the
+# 05:17 ingest was dropped entirely, and the 11:17 ingest landed at 12:45. So
+# compute ran three hours before the day's data arrived and the page showed
+# yesterday.
+#
+# The ordering was also wrong by design. At 02:12 last night's sleep and HRV
+# are not in Garmin yet; they arrive with the 05:17 ingest. Today's readiness
+# — the number worth having in the morning — therefore waited for tomorrow's
+# run, about 21 hours late.
+#
+# Chaining to the ingest fixes both: whenever data actually lands, however
+# late, the numbers follow it. The cron stays so a day with no ingest at all
+# still recomputes.
 on:
   schedule:
     - cron: "12 2 * * *"
+  workflow_run:
+    workflows: ["Ingest"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       days:
@@ -18,6 +34,12 @@ concurrency:
 
 jobs:
   compute:
+    # A failed ingest wrote nothing worth recomputing, and its own log is the
+    # place that failure should be read. Schedule and manual runs are never
+    # gated.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
