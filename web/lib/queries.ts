@@ -4,6 +4,36 @@ import type {
   Insight, Nutrition, Scorecard, Settings, SyncStatus, WeeklyReport,
 } from "./types";
 
+/**
+ * Retries a query that failed with a transient auth error.
+ *
+ * Supabase mints a new JWT on refresh, and for a moment afterwards a request
+ * can land on a node whose clock is a fraction behind the auth server's and
+ * be rejected with "JWT issued at future". Observed in production: a token
+ * refresh at 21:51:34, then thirteen queries fired in parallel two seconds
+ * later, of which twelve returned 200 and one returned 401. One failure in
+ * 5,504 requests over 24 hours.
+ *
+ * Firing the whole page's queries in parallel right after a refresh is what
+ * maximises the exposure, so the fix is to retry rather than to surface a
+ * one-off as a red banner. A refreshed token is accepted within a second.
+ */
+const TRANSIENT_AUTH = /jwt|PGRST301|issued at future/i;
+
+async function retrying<T>(
+  run: () => PromiseLike<{ data: T | null; error: { message: string; code?: string } | null }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: { message: string; code?: string } | null }> {
+  let last = await run();
+  for (let i = 1; i < attempts; i++) {
+    if (!last.error) return last;
+    if (!TRANSIENT_AUTH.test(`${last.error.code ?? ""} ${last.error.message}`)) return last;
+    await new Promise((r) => setTimeout(r, 150 * i));
+    last = await run();
+  }
+  return last;
+}
+
 function isoDaysAgo(days: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - days);
@@ -26,20 +56,21 @@ export async function loadTrainingData(rangeDays: number) {
     loads, readiness, daily, scans, activities, weekly, insights, sync,
     checkins, nutrition, settings, gear, scorecard,
   ] = await Promise.all([
-    sb.from("daily_load").select("*").gte("day", loadSince).order("day"),
-    sb.from("daily_readiness").select("*").gte("day", since).order("day"),
-    sb.from("garmin_daily").select("*").gte("day", since).order("day"),
-    sb.from("evolt_scans").select("*").order("scanned_at"),
-    sb.from("activities").select("*").gte("start_at", since).order("start_at", { ascending: false }),
-    sb.from("weekly_reports").select("*").order("iso_year", { ascending: false })
-      .order("iso_week", { ascending: false }).limit(12),
-    sb.from("insights").select("*").order("computed_at", { ascending: false }),
-    sb.from("sync_status").select("*"),
-    sb.from("daily_checkin").select("*").gte("day", since).order("day"),
-    sb.from("nutrition_daily").select("*").gte("day", since).order("day"),
-    sb.from("athlete_settings").select("*").maybeSingle(),
-    sb.from("gear").select("*").eq("retired", false),
-    sb.from("daily_scorecard").select("*").gte("day", since).order("day"),
+    retrying(() => sb.from("daily_load").select("*").gte("day", loadSince).order("day")),
+    retrying(() => sb.from("daily_readiness").select("*").gte("day", since).order("day")),
+    retrying(() => sb.from("garmin_daily").select("*").gte("day", since).order("day")),
+    retrying(() => sb.from("evolt_scans").select("*").order("scanned_at")),
+    retrying(() => sb.from("activities").select("*").gte("start_at", since)
+      .order("start_at", { ascending: false })),
+    retrying(() => sb.from("weekly_reports").select("*").order("iso_year", { ascending: false })
+      .order("iso_week", { ascending: false }).limit(12)),
+    retrying(() => sb.from("insights").select("*").order("computed_at", { ascending: false })),
+    retrying(() => sb.from("sync_status").select("*")),
+    retrying(() => sb.from("daily_checkin").select("*").gte("day", since).order("day")),
+    retrying(() => sb.from("nutrition_daily").select("*").gte("day", since).order("day")),
+    retrying(() => sb.from("athlete_settings").select("*").maybeSingle()),
+    retrying(() => sb.from("gear").select("*").eq("retired", false)),
+    retrying(() => sb.from("daily_scorecard").select("*").gte("day", since).order("day")),
   ]);
 
   return {

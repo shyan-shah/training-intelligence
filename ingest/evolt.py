@@ -103,7 +103,17 @@ def parse_text(text: str) -> ParsedScan:
 
     if not scan.values.get("weight_kg"):
         scan.needs_review = True
-        scan.review_reason = "; ".join(filter(None, [scan.review_reason, "no weight found"]))
+        # Include a snippet of what was actually extracted. "no weight found"
+        # on its own gives nothing to fix: the labels differ between Evolt
+        # firmware versions and the only way to correct the pattern is to see
+        # the text. Whitespace is collapsed so the snippet stays readable.
+        found = sorted(k for k in scan.values if k != "segmental")
+        snippet = " ".join(text.split())[:200]
+        scan.review_reason = "; ".join(filter(None, [
+            scan.review_reason,
+            f"no weight found (matched: {', '.join(found) or 'nothing'})",
+            f"text began: {snippet}" if snippet else "no text layer at all",
+        ]))
 
     return scan
 

@@ -108,11 +108,30 @@ def test_inconsistent_scan_is_flagged_for_review():
     assert "inconsistent" in scan.review_reason
 
 
-def test_missing_weight_is_flagged():
+def test_missing_weight_is_flagged_with_enough_detail_to_fix_it():
+    """A real scan failed in production with only "no weight found", which
+    gives nothing to work from: Evolt label wording differs between firmware
+    versions and the pattern can only be corrected by seeing the text. The
+    reason now carries what matched and how the text began."""
     bad = REAL_SCAN.replace("Total Weight            66.7 kg", "")
     scan = parse_text(bad)
+
     assert scan.needs_review is True
     assert "no weight found" in scan.review_reason
+    # What it did manage to read, so the gap is obvious.
+    assert "matched:" in scan.review_reason
+    assert "body_fat_pct" in scan.review_reason
+    # And a snippet of the document itself.
+    assert "text began:" in scan.review_reason
+    assert "EVOLT 360 BODY SCAN REPORT" in scan.review_reason
+    # Collapsed whitespace, so the snippet is one readable line.
+    assert "\n" not in scan.review_reason
+
+
+def test_a_pdf_with_no_text_layer_says_so():
+    scan = parse_text("")
+    assert scan.needs_review is True
+    assert "no text layer at all" in scan.review_reason
 
 
 def test_empty_input_does_not_crash():
