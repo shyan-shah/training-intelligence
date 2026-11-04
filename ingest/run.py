@@ -74,7 +74,11 @@ def cmd_evolt(cfg: Config, db: Db, args) -> None:
     pending = db.select("evolt_scans", columns="id,pdf_path,scanned_at,conditions",
                         parse_method="eq.pending")
     if not pending:
+        # Still a successful run. Without this the page shows Evolt as stale
+        # forever, because scans only arrive when one is uploaded and the
+        # source would never refresh its timestamp.
         log.info("evolt: nothing pending")
+        db.mark_sync("evolt", ok=True)
         return
 
     import httpx
